@@ -2,47 +2,72 @@
 
 MODEL_PATH=~/models/Qwen3-30B-A3B-Q4_K_M/Qwen3-30B-A3B-Q4_K_M.gguf
 EXLLAMA_PATH=~/tools/exllamav2
+VENV_PATH=$EXLLAMA_PATH/venv
 
 # System-specific optimizations for dual 3090s
 export CUDA_VISIBLE_DEVICES=0,1  # Use both GPUs
 export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512  # Optimize CUDA memory allocation
 
-# Navigate to exllama directory
-cd $EXLLAMA_PATH
-
-# Check for required Python files
-if [ ! -f "example.py" ] && [ ! -f "exllama.py" ]; then
-    echo "Error: Could not find ExLlamaV2 Python scripts."
-    echo "Please ensure ExLlamaV2 is properly installed and you're in the correct directory:"
-    echo "Current location: $(pwd)"
-    echo "Expected files:"
-    echo "  - example.py"
-    echo "  - exllama.py"
+# Check if virtual environment exists
+if [ ! -d "$VENV_PATH" ]; then
+    echo "Error: Virtual environment not found at $VENV_PATH"
+    echo "Please ensure the virtual environment is properly set up"
     exit 1
 fi
 
-# Determine which script to use
-if [ -f "example.py" ]; then
-    SCRIPT="example.py"
-else
-    SCRIPT="exllama.py"
-fi
-
-# Check if Python and required packages are available
-if ! command -v python3 &> /dev/null; then
-    echo "Error: Python3 is required but not found"
+# Verify model file exists
+if [ ! -f "$MODEL_PATH" ]; then
+    echo "Error: Model file not found at $MODEL_PATH"
+    echo "Please ensure the model file exists and the path is correct"
     exit 1
 fi
 
-# Run the model with optimized parameters
-python3 $SCRIPT \
-    --model $MODEL_PATH \
-    --max_seq_len 4096 \
-    --gpu-split auto \
-    --tensor-parallel \
-    --compress-pos-emb 4 \
-    --alpha_value 1 \
-    --rope-scaling dynamic \
-    "$@"  # Pass any additional arguments
+# Create a temporary Python script that uses the actual module structure
+TMP_SCRIPT=$(mktemp)
+cat > "$TMP_SCRIPT" << 'EOF'
+from exllamav2.model import ExLlamaV2
+from exllamav2.generator import ExLlamaV2StreamingGenerator
+from exllamav2.config import ExLlamaV2Config
+import sys
 
-# Note: ExLlamaV2 automatically handles most GPU memory optimizations
+def main():
+    # Initialize model configuration
+    config = ExLlamaV2Config()
+    config.model_path = sys.argv[1]
+    config.max_seq_len = 4096
+    config.gpu_split = "auto"
+    config.tensor_parallel = True
+    config.compress_pos_emb = 4
+    config.alpha_value = 1
+    config.rope_scaling = "dynamic"
+
+    # Load the model
+    model = ExLlamaV2(config)
+
+    # Create generator
+    generator = ExLlamaV2StreamingGenerator(model)
+    generator.settings.temperature = 0.7
+    generator.settings.top_p = 0.9
+    generator.settings.top_k = 50
+
+    # Get input prompt
+    prompt = " ".join(sys.argv[2:]) if len(sys.argv) > 2 else "Hello, how are you?"
+
+    # Generate response
+    output_text = ""
+    for chunk in generator.generate_simple(prompt, max_new_tokens=256):
+        print(chunk, end="", flush=True)
+        output_text += chunk
+    print()  # Final newline
+
+if __name__ == "__main__":
+    main()
+EOF
+
+# Activate virtual environment and run ExLlamaV2
+source "$VENV_PATH/bin/activate"
+python3 "$TMP_SCRIPT" "$MODEL_PATH" "$@"
+deactivate
+
+# Cleanup
+rm "$TMP_SCRIPT"

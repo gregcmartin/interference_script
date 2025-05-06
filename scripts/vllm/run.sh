@@ -2,33 +2,17 @@
 
 MODEL_PATH=~/models/Qwen3-30B-A3B-Q4_K_M/Qwen3-30B-A3B-Q4_K_M.gguf
 VLLM_PATH=~/tools/vllm
+VENV_PATH=$VLLM_PATH/venv
 
 # System-specific optimizations for dual 3090s
 export CUDA_VISIBLE_DEVICES=0,1  # Use both GPUs
 export CUDA_LAUNCH_BLOCKING=0    # Async CUDA operations
 export NCCL_P2P_DISABLE=0       # Enable GPU P2P communication
 
-# Navigate to vllm directory
-cd $VLLM_PATH
-
-# Check if Python and vLLM are available
-if ! command -v python3 &> /dev/null; then
-    echo "Error: Python3 is required but not found"
-    exit 1
-fi
-
-# Check if vLLM module is installed
-if ! python3 -c "import vllm" &> /dev/null; then
-    echo "Error: vLLM Python module not found"
-    echo "Please ensure vLLM is properly installed:"
-    echo "pip install vllm"
-    exit 1
-fi
-
-# Check if CUDA is available
-if ! python3 -c "import torch; assert torch.cuda.is_available()" &> /dev/null; then
-    echo "Error: CUDA is not available for PyTorch"
-    echo "Please ensure CUDA and PyTorch with CUDA support are properly installed"
+# Check if virtual environment exists
+if [ ! -d "$VENV_PATH" ]; then
+    echo "Error: Virtual environment not found at $VENV_PATH"
+    echo "Please ensure the virtual environment is properly set up"
     exit 1
 fi
 
@@ -39,7 +23,16 @@ if [ ! -f "$MODEL_PATH" ]; then
     exit 1
 fi
 
-# Run the model with optimized parameters
+# Check CUDA availability
+if ! command -v nvidia-smi &> /dev/null; then
+    echo "Warning: nvidia-smi not found. CUDA may not be available."
+    echo "This script is optimized for dual NVIDIA 3090 GPUs."
+fi
+
+# Activate virtual environment
+source "$VENV_PATH/bin/activate"
+
+# Run vLLM using the entrypoints module
 python3 -m vllm.entrypoints.openai.api_server \
     --model $MODEL_PATH \
     --tensor-parallel-size 2 \
@@ -52,8 +45,5 @@ python3 -m vllm.entrypoints.openai.api_server \
     --port 8000 \
     "$@"  # Pass any additional arguments
 
-# Note: vLLM automatically handles many optimizations including:
-# - Paged Attention for efficient memory usage
-# - Continuous batching for higher throughput
-# - PagedAttention for efficient memory management
-# - Kernel fusion for faster inference
+# Deactivate virtual environment
+deactivate

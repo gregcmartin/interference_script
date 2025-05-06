@@ -1,40 +1,24 @@
 #!/bin/bash
 
 MODEL_PATH=~/models/Qwen3-30B-A3B-Q4_K_M/Qwen3-30B-A3B-Q4_K_M.gguf
-KTRANSFORMERS_PATH=~/tools/ktransformers
+KTRANS_PATH=~/tools/ktransformers
+VENV_PATH=$KTRANS_PATH/venv
 
 # System-specific optimizations for Xeon + dual 3090s
 export CUDA_VISIBLE_DEVICES=0,1  # Use both GPUs
 export OMP_NUM_THREADS=$(nproc)  # Use all CPU threads
-export KOTLIN_OPTS="-Xmx64g"     # Use half of system RAM for JVM
 
-# Navigate to ktransformers directory
-cd $KTRANSFORMERS_PATH
-
-# Check if Java is installed
-if ! command -v java &> /dev/null; then
-    echo "Error: Java is required but not found"
-    echo "Please install Java 11 or higher"
+# Check if virtual environment exists
+if [ ! -d "$VENV_PATH" ]; then
+    echo "Error: Virtual environment not found at $VENV_PATH"
+    echo "Please ensure the virtual environment is properly set up"
     exit 1
 fi
 
-# Check if Gradle is available
-if [ -f "./gradlew" ]; then
-    GRADLE_CMD="./gradlew"
-elif command -v gradle &> /dev/null; then
-    GRADLE_CMD="gradle"
-else
-    echo "Error: Gradle not found. Please ensure either:"
-    echo "1. gradlew exists in the ktransformers directory"
-    echo "2. or gradle is installed system-wide"
-    exit 1
-fi
-
-# Check if the build file exists
-if [ ! -f "build.gradle.kts" ] && [ ! -f "build.gradle" ]; then
-    echo "Error: No Gradle build file found"
-    echo "Expected either build.gradle.kts or build.gradle"
-    echo "Current location: $(pwd)"
+# Check if ktransformers module exists
+if [ ! -d "$VENV_PATH/lib/python"*/site-packages/ktransformers ]; then
+    echo "Error: KTransformers module not found in virtual environment"
+    echo "Please ensure KTransformers is properly installed in the virtual environment"
     exit 1
 fi
 
@@ -45,8 +29,11 @@ if [ ! -f "$MODEL_PATH" ]; then
     exit 1
 fi
 
-# Run the model with optimized parameters
-$GRADLE_CMD run --args=" \
+# Activate virtual environment and run KTransformers
+source "$VENV_PATH/bin/activate"
+
+# Run KTransformers using the built-in local_chat.py script
+python3 -m ktransformers.local_chat \
     --model $MODEL_PATH \
     --gpu-layers -1 \
     --num-gpus 2 \
@@ -55,10 +42,7 @@ $GRADLE_CMD run --args=" \
     --memory-map true \
     --parallel-processing true \
     --precision float16 \
-    $@"
+    "$@"  # Pass any additional arguments
 
-# Note: ktransformers specific optimizations:
-# - Uses Kotlin coroutines for parallel processing
-# - JVM memory management optimized for large models
-# - GPU memory management through CUDA bindings
-# - Automatic batching for inference
+# Deactivate virtual environment
+deactivate
