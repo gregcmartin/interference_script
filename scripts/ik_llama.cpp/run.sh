@@ -12,19 +12,60 @@ export IK_LLAMA_TURBO=1         # Enable turbo mode for faster inference
 # Navigate to ik_llama.cpp directory
 cd $IK_LLAMA_PATH
 
+# Find the main executable (check various possible locations)
+POSSIBLE_LOCATIONS=(
+    "./main"
+    "./build/bin/main"
+    "./build/main"
+    "./ik_llama"
+    "./build/bin/ik_llama"
+    "./build/ik_llama"
+)
+
+EXECUTABLE=""
+for loc in "${POSSIBLE_LOCATIONS[@]}"; do
+    if [ -f "$loc" ]; then
+        EXECUTABLE="$loc"
+        break
+    fi
+done
+
+if [ -z "$EXECUTABLE" ]; then
+    echo "Error: Could not find ik_llama.cpp executable."
+    echo "Please ensure ik_llama.cpp is properly compiled."
+    echo "Checked locations:"
+    for loc in "${POSSIBLE_LOCATIONS[@]}"; do
+        echo "  - $loc"
+    done
+    exit 1
+fi
+
+# Verify model file exists
+if [ ! -f "$MODEL_PATH" ]; then
+    echo "Error: Model file not found at $MODEL_PATH"
+    echo "Please ensure the model file exists and the path is correct"
+    exit 1
+fi
+
+# Check CUDA availability
+if ! command -v nvidia-smi &> /dev/null; then
+    echo "Warning: nvidia-smi not found. CUDA may not be available."
+    echo "This script is optimized for dual NVIDIA 3090 GPUs."
+fi
+
 # Run the model with optimized parameters
-./main \
+$EXECUTABLE \
     --model $MODEL_PATH \
-    --n-gpu-layers -1 \     # Auto-determine GPU layer split
-    --threads $(nproc) \    # Use all CPU threads
-    --ctx-size 4096 \       # Default context size
-    --batch-size 512 \      # Large batch size for GPU utilization
-    --parallel 2 \          # Use both GPUs
-    --memory-f32 \         # Use FP32 for memory keys
-    --mlock \              # Lock memory to prevent swapping
-    --mul-mat-q \          # Quantized matrix multiplication
-    --tensor-split 0.5,0.5 \ # Even split between GPUs
-    --rope-scaling dynamic \ # Dynamic rope scaling
+    --n-gpu-layers -1 \
+    --threads $(nproc) \
+    --ctx-size 4096 \
+    --batch-size 512 \
+    --parallel 2 \
+    --memory-f32 \
+    --mlock \
+    --mul-mat-q \
+    --tensor-split 0.5,0.5 \
+    --rope-scaling dynamic \
     "$@"  # Pass any additional arguments
 
 # Note: ik_llama.cpp specific features:

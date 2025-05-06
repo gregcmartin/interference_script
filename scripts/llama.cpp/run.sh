@@ -11,13 +11,24 @@ export BLAS_NUM_THREADS=$(nproc)
 # Navigate to llama.cpp directory
 cd $LLAMA_PATH
 
+# Find the main executable (could be main, server, or built with cmake)
+if [ -f "./main" ]; then
+    EXECUTABLE="./main"
+elif [ -f "./build/bin/main" ]; then
+    EXECUTABLE="./build/bin/main"
+elif [ -f "./build/main" ]; then
+    EXECUTABLE="./build/main"
+else
+    echo "Error: Could not find llama.cpp executable. Please ensure llama.cpp is properly compiled."
+    echo "Expected locations checked:"
+    echo "  - ./main"
+    echo "  - ./build/bin/main"
+    echo "  - ./build/main"
+    exit 1
+fi
+
 # Run the model with optimized parameters
-# --n-gpu-layers -1     : Automatically determine optimal layer split between GPU/CPU
-# --threads $(nproc)    : Use all available CPU threads
-# --ctx-size 4096       : Default context size, adjust based on requirements
-# --batch-size 512      : Larger batch size for better GPU utilization
-# --parallel 2          : Utilize both GPUs
-./main \
+$EXECUTABLE \
     --model $MODEL_PATH \
     --n-gpu-layers -1 \
     --threads $(nproc) \

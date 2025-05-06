@@ -10,17 +10,39 @@ export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512  # Optimize CUDA memory all
 # Navigate to exllama directory
 cd $EXLLAMA_PATH
 
+# Check for required Python files
+if [ ! -f "example.py" ] && [ ! -f "exllama.py" ]; then
+    echo "Error: Could not find ExLlamaV2 Python scripts."
+    echo "Please ensure ExLlamaV2 is properly installed and you're in the correct directory:"
+    echo "Current location: $(pwd)"
+    echo "Expected files:"
+    echo "  - example.py"
+    echo "  - exllama.py"
+    exit 1
+fi
+
+# Determine which script to use
+if [ -f "example.py" ]; then
+    SCRIPT="example.py"
+else
+    SCRIPT="exllama.py"
+fi
+
+# Check if Python and required packages are available
+if ! command -v python3 &> /dev/null; then
+    echo "Error: Python3 is required but not found"
+    exit 1
+fi
+
 # Run the model with optimized parameters
-python3 example.py \
+python3 $SCRIPT \
     --model $MODEL_PATH \
     --max_seq_len 4096 \
-    --gpu-split auto \  # Automatically split across GPUs
-    --tensor-parallel \  # Enable tensor parallelism
-    --compress-pos-emb 4 \  # Compress positional embeddings for memory efficiency
-    --alpha_value 1 \  # Default value for sampling temperature
-    --rope-scaling dynamic \  # Dynamic rope scaling for better long context handling
+    --gpu-split auto \
+    --tensor-parallel \
+    --compress-pos-emb 4 \
+    --alpha_value 1 \
+    --rope-scaling dynamic \
     "$@"  # Pass any additional arguments
 
 # Note: ExLlamaV2 automatically handles most GPU memory optimizations
-# The script assumes example.py exists in the exllamav2 directory
-# Adjust parameters based on specific model requirements and system performance
